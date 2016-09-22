@@ -53,6 +53,7 @@ http {
         server_name  localhost;
 
         modsecurity on;
+        modsecurity_db_path '%%TESTDIR%%/modsec-db';
         modsecurity_rules '
             SecRuleEngine On
             SecRule ARGS "@streq whee" "id:10,phase:2"

@@ -27,6 +27,7 @@ while (<STDIN>) {
 
 		print "
         modsecurity on;
+        modsecurity_db_path '%%TESTDIR%%/modsec-db';
         modsecurity_rules '
         SecRuleEngine On
         SecDebugLogLevel 9

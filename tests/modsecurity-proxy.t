@@ -45,6 +45,7 @@ http {
 
         location /phase1 {
             modsecurity on;
+            modsecurity_db_path '%%TESTDIR%%/modsec-db';
             modsecurity_rules '
                 SecRuleEngine On
                 SecRule ARGS "@streq redirect301" "id:1,phase:1,status:301,redirect:http://www.modsecurity.org"
@@ -57,6 +58,7 @@ http {
         }
         location /phase2 {
             modsecurity on;
+            modsecurity_db_path '%%TESTDIR%%/modsec-db';
             modsecurity_rules '
                 SecRuleEngine On
                 SecRule ARGS "@streq redirect301" "id:1,phase:2,status:301,redirect:http://www.modsecurity.org"
@@ -69,6 +71,7 @@ http {
         }
         location /phase3 {
             modsecurity on;
+            modsecurity_db_path '%%TESTDIR%%/modsec-db';
             modsecurity_rules '
                 SecRuleEngine On
                 SecRule ARGS "@streq redirect301" "id:1,phase:3,status:301,redirect:http://www.modsecurity.org"
@@ -81,6 +84,7 @@ http {
         }
         location /phase4 {
             modsecurity on;
+            modsecurity_db_path '%%TESTDIR%%/modsec-db';
             modsecurity_rules '
                 SecRuleEngine On
                 SecRule ARGS "@streq redirect301" "id:1,phase:4,status:301,redirect:http://www.modsecurity.org"

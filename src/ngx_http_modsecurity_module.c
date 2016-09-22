@@ -518,7 +518,7 @@ ngx_http_modsecurity_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
         mcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_modsecurity_module);
         rc = msc_set_db_path(mcf->modsec, db_path);
         if (rc != 0) {
-            /* XXX: do nginx_error_log() here */
+            /* XXX: do nginx_error_log() here, or 'return strdup(error)' */
             dd("modsecurity db could not be initialized (errno = %d)", rc);
             return NGX_CONF_ERROR;
         }
@@ -570,10 +570,10 @@ ngx_http_modsecurity_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
         if (rules_set == (char *)-1) {
             return NGX_CONF_ERROR;
         }
+        dd("Loading rules from: '%s'", rules_set);
         ngx_http_modsecurity_pcre_malloc_init();
         res = msc_rules_add_file(c->rules_set, rules_set, &error);
         ngx_http_modsecurity_pcre_malloc_done();
-        dd("Loading rules from: '%s'", rules_set);
         if (res < 0) {
             dd("Failed to load the rules from: '%s' - reason: '%s'", rules_set, error);
             return strdup(error);
@@ -588,10 +588,10 @@ ngx_http_modsecurity_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
         if (rules == (char *)-1) {
             return NGX_CONF_ERROR;
         }
+        dd("Loading rules: '%s'", rules);
         ngx_http_modsecurity_pcre_malloc_init();
         res = msc_rules_add(c->rules_set, rules, &error);
         ngx_http_modsecurity_pcre_malloc_done();
-        dd("Loading rules: '%s'", rules);
         if (res < 0) {
             dd("Failed to load the rules: '%s' - reason: '%s'", rules, error);
             return strdup(error);

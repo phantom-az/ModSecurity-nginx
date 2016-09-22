@@ -63,6 +63,7 @@ typedef struct {
 
     ngx_flag_t enable;
     ngx_flag_t sanity_checks_enabled;
+    ngx_str_t db_path;
     ngx_int_t id;
 
     Rules *rules_set;

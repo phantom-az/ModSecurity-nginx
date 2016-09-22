@@ -261,6 +261,14 @@ static ngx_command_t ngx_http_modsecurity_commands[] =  {
     NULL
   },
   {
+    ngx_string("modsecurity_db_path"),
+    NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE1,
+    ngx_conf_set_str_slot,
+    NGX_HTTP_LOC_CONF_OFFSET,
+    offsetof(ngx_http_modsecurity_loc_conf_t, db_path),
+    NULL
+  },
+  {
     ngx_string("modsecurity_rules_file"),
     NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE1,
     ngx_conf_set_str_slot,
@@ -457,6 +465,8 @@ ngx_http_modsecurity_create_loc_conf(ngx_conf_t *cf)
 
     conf->enable = NGX_CONF_UNSET;
     conf->sanity_checks_enabled = NGX_CONF_UNSET;
+    conf->db_path.len = 0;
+    conf->db_path.data = NULL;
     conf->rules_remote_server.len = 0;
     conf->rules_remote_server.data = NULL;
     conf->rules_remote_key.len = 0;
@@ -488,6 +498,7 @@ ngx_http_modsecurity_create_loc_conf(ngx_conf_t *cf)
 static char *
 ngx_http_modsecurity_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
 {
+    ngx_http_modsecurity_main_conf_t *mcf = NULL;
     ngx_http_modsecurity_loc_conf_t *p = NULL;
     ngx_http_modsecurity_loc_conf_t *c = NULL;
 
@@ -496,6 +507,22 @@ ngx_http_modsecurity_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
 
     ngx_conf_merge_value(c->enable, p->enable, 0);
     ngx_conf_merge_value(c->sanity_checks_enabled, p->sanity_checks_enabled, 0);
+
+    if (c->db_path.len > 0) {
+        int rc;
+        char *db_path = ngx_str_to_char(c->db_path, cf->pool);
+        if (db_path == (char *)-1) {
+            return NGX_CONF_ERROR;
+        }
+
+        mcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_modsecurity_module);
+        rc = msc_set_db_path(mcf->modsec, db_path);
+        if (rc != 0) {
+            /* XXX: do nginx_error_log() here */
+            dd("modsecurity db could not be initialized (errno = %d)", rc);
+            return NGX_CONF_ERROR;
+        }
+    }
 
     dd("Rules set: '%p'\n", c->rules_set);
     dd("Parent ModSecurityRuleSet is: '%p' current is: '%p'", p->rules_set, c->rules_set);

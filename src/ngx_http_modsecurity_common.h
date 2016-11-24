@@ -65,6 +65,9 @@ typedef struct {
     ngx_flag_t sanity_checks_enabled;
     ngx_int_t id;
 
+    ngx_uint_t wrn_log_level;
+    ngx_uint_t err_log_level;
+
     Rules *rules_set;
 } ngx_http_modsecurity_loc_conf_t;
 
@@ -87,7 +90,7 @@ typedef struct {
 extern ngx_module_t ngx_http_modsecurity_module;
 
 /* ngx_http_modsecurity_module.c */
-int ngx_http_modsecurity_process_intervention (Transaction *transaction, ngx_http_request_t *r);
+int ngx_http_modsecurity_process_intervention (Transaction *transaction, ngx_http_request_t *r, int phase);
 ngx_http_modsecurity_ctx_t *ngx_http_modsecurity_create_ctx(ngx_http_request_t *r);
 char *ngx_str_to_char(ngx_str_t a, ngx_pool_t *p);
 void ngx_http_modsecurity_pcre_malloc_init(void);
@@ -105,7 +108,7 @@ int ngx_http_modescurity_store_ctx_header(ngx_http_request_t *r, ngx_str_t *name
 #endif
 
 /* ngx_http_modsecurity_log.c */
-void ngx_http_modsecurity_log(void *log, const char* msg);
+void ngx_http_modsecurity_log(int log_level, void *log, const char* msg);
 ngx_int_t ngx_http_modsecurity_log_handler(ngx_http_request_t *r);
 
 /* ngx_http_modsecurity_pre_access.c */

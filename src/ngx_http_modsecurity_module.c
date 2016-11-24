@@ -83,8 +83,9 @@ ngx_str_to_char(ngx_str_t a, ngx_pool_t *p)
 
 
 ngx_inline int
-ngx_http_modsecurity_process_intervention (Transaction *transaction, ngx_http_request_t *r)
+ngx_http_modsecurity_process_intervention (Transaction *transaction, ngx_http_request_t *r, int phase)
 {
+    ngx_http_modsecurity_loc_conf_t *loc_cf = NULL;
     ModSecurityIntervention intervention;
     intervention.status = 200;
     intervention.url = NULL;
@@ -96,8 +97,13 @@ ngx_http_modsecurity_process_intervention (Transaction *transaction, ngx_http_re
         return 0;
     }
 
+    loc_cf = ngx_http_get_module_loc_conf(r, ngx_http_modsecurity_module);
+
     if (intervention.log == NULL) {
         intervention.log = "(no log message was specified)";
+    }
+    if (intervention.intercept_msg == NULL) {
+        intervention.intercept_msg = "";
     }
 
     if (intervention.url != NULL)
@@ -134,6 +140,11 @@ ngx_http_modsecurity_process_intervention (Transaction *transaction, ngx_http_re
         r->headers_out.location = location;
         r->headers_out.location->hash = 1;
 
+        //ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
+        ngx_log_error(loc_cf->err_log_level, r->connection->log, 0,
+            "ModSecurity: Access denied with redirect to %s using status %d (phase %d). %s",
+            intervention.url, intervention.status, phase, intervention.intercept_msg);
+
 #if defined(MODSECURITY_SANITY_CHECKS) && (MODSECURITY_SANITY_CHECKS)
         ngx_http_modescurity_store_ctx_header(r, &location->key, &location->value);
 #endif
@@ -148,6 +159,12 @@ ngx_http_modsecurity_process_intervention (Transaction *transaction, ngx_http_re
             dd("Headers are already sent. Cannot perform the redirection at this point.");
             return -1;
         }
+
+        /* FIXME:  validate .status to be >= 400 ? */
+        ngx_log_error(loc_cf->err_log_level, r->connection->log, 0,
+            "ModSecurity: Access denied with code %d (phase %d). %s",
+            intervention.status, phase, intervention.intercept_msg);
+
         dd("intervention -- returning code: %d", intervention.status);
         return intervention.status;
     }
@@ -242,6 +259,13 @@ ngx_http_modsecurity_set_remote_server(ngx_conf_t *cf, ngx_command_t *cmd, void 
 
 }
 
+static ngx_conf_enum_t  ngx_http_modsecurity_log_levels[] = {
+    { ngx_string("info"), NGX_LOG_INFO },
+    { ngx_string("notice"), NGX_LOG_NOTICE },
+    { ngx_string("warn"), NGX_LOG_WARN },
+    { ngx_string("error"), NGX_LOG_ERR },
+    { ngx_null_string, 0 }
+};
 
 static ngx_command_t ngx_http_modsecurity_commands[] =  {
   {
@@ -284,6 +308,23 @@ static ngx_command_t ngx_http_modsecurity_commands[] =  {
     offsetof(ngx_http_modsecurity_loc_conf_t, rules),
     NULL
   },
+  {
+    ngx_string("modsecurity_warn_log_level"),
+    NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE1,
+    ngx_conf_set_enum_slot,
+    NGX_HTTP_LOC_CONF_OFFSET,
+    offsetof(ngx_http_modsecurity_loc_conf_t, wrn_log_level),
+    &ngx_http_modsecurity_log_levels
+  },
+  {
+    ngx_string("modsecurity_error_log_level"),
+    NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE1,
+    ngx_conf_set_enum_slot,
+    NGX_HTTP_LOC_CONF_OFFSET,
+    offsetof(ngx_http_modsecurity_loc_conf_t, err_log_level),
+    &ngx_http_modsecurity_log_levels
+  },
+
   ngx_null_command
 };
 
@@ -400,6 +441,7 @@ static void *
 ngx_http_modsecurity_create_main_conf(ngx_conf_t *cf)
 {
     ngx_http_modsecurity_main_conf_t *conf;
+//printf("ngx_http_modsecurity_create_main_conf() is called\n");
 
     dd("creating the ModSecurity main configuration");
 
@@ -423,7 +465,6 @@ ngx_http_modsecurity_create_main_conf(ngx_conf_t *cf)
 
     /* Provide our connector information to LibModSecurity */
     msc_set_connector_info(conf->modsec, "ModSecurity-nginx v0.1.1-beta");
-    msc_set_log_cb(conf->modsec, ngx_http_modsecurity_log);
 
     cln = ngx_pool_cleanup_add(cf->pool, 0);
     if (cln == NULL)
@@ -434,7 +475,6 @@ ngx_http_modsecurity_create_main_conf(ngx_conf_t *cf)
     cln->handler = ngx_http_modsecurity_main_config_cleanup;
     cln->data = conf;
 
-
     return conf;
 }
 
@@ -444,6 +484,8 @@ ngx_http_modsecurity_create_loc_conf(ngx_conf_t *cf)
 {
     ngx_http_modsecurity_loc_conf_t  *conf;
     ngx_pool_cleanup_t *cln = NULL;
+
+//printf("ngx_http_modsecurity_create_loc_conf() is called\n");
 
     conf = (ngx_http_modsecurity_loc_conf_t  *)
         ngx_palloc(cf->pool, sizeof(ngx_http_modsecurity_loc_conf_t));
@@ -466,6 +508,8 @@ ngx_http_modsecurity_create_loc_conf(ngx_conf_t *cf)
     conf->rules.len = 0;
     conf->rules.data = NULL;
     conf->id = 0;
+    conf->err_log_level = NGX_CONF_UNSET_UINT;
+    conf->wrn_log_level = NGX_CONF_UNSET_UINT;
 
     /* Create a new rules instance */
     conf->rules_set = msc_create_rules_set();
@@ -488,14 +532,23 @@ ngx_http_modsecurity_create_loc_conf(ngx_conf_t *cf)
 static char *
 ngx_http_modsecurity_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
 {
+    ngx_http_modsecurity_main_conf_t *cmcf;
     ngx_http_modsecurity_loc_conf_t *p = NULL;
     ngx_http_modsecurity_loc_conf_t *c = NULL;
 
+//printf("ngx_http_modsecurity_merge_loc_conf() is called\n");
     p = parent;
     c = child;
 
     ngx_conf_merge_value(c->enable, p->enable, 0);
     ngx_conf_merge_value(c->sanity_checks_enabled, p->sanity_checks_enabled, 0);
+    ngx_conf_merge_uint_value(c->wrn_log_level, p->wrn_log_level, NGX_LOG_INFO);
+    ngx_conf_merge_uint_value(c->err_log_level, p->err_log_level, NGX_LOG_INFO);
+
+    /* set up log callback for modsecurity */
+    cmcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_modsecurity_module);
+//printf("msc_set_log_cb() is called\n");
+    msc_set_log_cb(cmcf->modsec, ngx_http_modsecurity_log, (int)c->wrn_log_level);
 
     dd("Rules set: '%p'\n", c->rules_set);
     dd("Parent ModSecurityRuleSet is: '%p' current is: '%p'", p->rules_set, c->rules_set);
